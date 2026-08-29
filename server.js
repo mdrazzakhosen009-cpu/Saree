@@ -10,6 +10,9 @@ const app=express();
 const PORT=process.env.PORT||3000;
 const ROOT=__dirname;
 
+// Trust proxy for secure cookies behind Render load balancer
+app.set('trust proxy', 1);
+
 // Safe storage directory for Render free tier (uses /tmp to avoid EACCES permission errors)
 const DATA_DIR = process.env.RENDER ? path.join('/tmp', 'data') : ROOT;
 try {
@@ -22,6 +25,8 @@ try {
     fs.mkdirSync(UPLOADS, { recursive: true });
 } catch (e) {}
 
+app.use(express.json({limit:'8mb'}));
+app.use(express.urlencoded({extended:true,limit:'8mb'}));
 app.use(session({
   secret:process.env.SESSION_SECRET||'change-this-secret',resave:false,saveUninitialized:false,
   cookie:{httpOnly:true,sameSite:'lax',secure:process.env.NODE_ENV==='production',maxAge:7*24*3600*1000}
@@ -31,7 +36,6 @@ app.use(express.static(path.join(ROOT,'store')));
 app.use('/admin',express.static(path.join(ROOT,'admin')));
 
 const db=new Database(path.join(DATA_DIR,'saree.db'));
-// Fail early instead of silently running with an unexpected storage location.
 if(process.env.RENDER && !process.env.DATA_DIR) console.warn('SAREE: DATA_DIR not set; render.yaml should mount /var/data.');
 db.pragma('journal_mode = WAL');
 db.exec(`
@@ -134,18 +138,17 @@ app.post('/api/admin/ai-product',auth,upload.single('image'),async(req,res)=>{
   res.json({preview});
 });
 
-// AI shopping quick setup image upload
 app.post('/api/admin/ai-setup-image',auth,upload.single('image'),(req,res)=>{if(!req.file)return res.status(400).json({error:'Image required'});const url='/uploads/'+req.file.filename;db.prepare('INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run('ai_proof_image',url);res.json({ok:true,url,settings:getSettings()});});
 
 async function openAIJson(system,user,images=[]){
  const key=process.env.OPENAI_API_KEY;if(!key)return null;
- const model=process.env.OPENAI_MODEL||'gpt-5.6-luna';
- const content=[{type:'input_text',text:user}];
- for(const img of images)content.push({type:'input_image',image_url:img});
- const body={model,input:[{role:'system',content:[{type:'input_text',text:system}]},{role:'user',content}],max_output_tokens:900};
- const r=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify(body)});
+ const model=process.env.OPENAI_MODEL||'gpt-4o';
+ const content=[{type:'text',text:user}];
+ for(const img of images)content.push({type:'image_url',image_url:{url:img}});
+ const body={model,messages:[{role:'system',content:system},{role:'user',content}],max_tokens:900};
+ const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify(body)});
  if(!r.ok)throw new Error('AI provider request failed');
- const d=await r.json();const text=d.output_text||'';const cleaned=text.replace(/^```json\s*/i,'').replace(/\s*```$/,'').trim();return JSON.parse(cleaned);
+ const d=await r.json();const text=d.choices?.[0]?.message?.content||'';const cleaned=text.replace(/^```json\s*/i,'').replace(/\s*```$/,'').trim();return JSON.parse(cleaned);
 }
 function catalogText(products){return products.map(p=>`ID ${p.id}: ${p.name} | ৳${p.price} | old ৳${p.old_price||0} | category ${p.category} | tags ${p.tags} | ${p.description}`).join('\n');}
 function resetChat(req){req.session.chatState={order:null};}
@@ -160,7 +163,6 @@ app.post('/api/chat',async(req,res)=>{
  const quick=[s.ai_q1_title,s.ai_q2_title,s.ai_q3_title,s.ai_q4_title,s.ai_q5_title].filter(Boolean);
  if(greeting(msg)){return res.json({reply:`আসসালামু আলাইকুম ❤️ SAREE-তে আপনাকে স্বাগতম। আমি SAREE-এর shopping assistant। শাড়ি দেখা, availability, price, delivery বা সরাসরি order করতে আমাকে বলুন।`,quick});}
 
- // Quick card deterministic answers
  const qMap=[[s.ai_q1_title,s.delivery_promise],[s.ai_q2_title,s.store_info],[s.ai_q3_title,s.opening_hours],[s.ai_q4_title,s.ai_q4_text],[s.ai_q5_title,s.ai_q5_text]];
  for(const[q,a]of qMap)if(q&&msg.toLowerCase()===String(q).toLowerCase())return res.json({reply:a,proof_image:msg.toLowerCase()===String(s.ai_q5_title).toLowerCase()?s.ai_proof_image:'',quick});
 
@@ -190,7 +192,6 @@ app.post('/api/chat',async(req,res)=>{
   }
  }catch(e){console.error('AI error:',e.message);}
 
- // Strong deterministic fallback when no AI key/provider is available
  const lower=msg.toLowerCase();
  const yes=/^(yes|হ্যাঁ|জি|confirm|নিশ্চিত|ঠিক আছে|ok|okay)$/i.test(msg);
  const o=state.order;
@@ -199,45 +200,4 @@ app.post('/api/chat',async(req,res)=>{
    if(p){
      if(!o.name && /^(order|অর্ডার|buy|কিনবো|নেব)/i.test(msg))return res.json({reply:`${p.name} order করতে আপনার নাম দিন।`,quick});
      if(!o.name && !/^(order|অর্ডার|buy|কিনবো|নেব)/i.test(msg)){o.name=msg;return res.json({reply:'ধন্যবাদ ❤️ এখন আপনার mobile number দিন।',quick});}
-     if(o.name&&!o.phone){const phone=msg.replace(/\s+/g,'');if(/01[3-9]\d{8}/.test(phone)||/\d{10,14}/.test(phone)){o.phone=msg;return res.json({reply:'এখন আপনার পূর্ণ delivery address দিন।',quick});}return res.json({reply:'একটি valid mobile number দিন, যেমন 01XXXXXXXXX।',quick});}
-     if(o.name&&o.phone&&!o.address){o.address=msg;return res.json({reply:'Payment method বলুন: '+activePayments(s).map(x=>x.method).join(', ')+(s.cod_enabled==='1'?', Cash on Delivery':'')+'।',quick});}
-     if(o.name&&o.phone&&o.address&&!o.payment_method){const pm=lower.includes('bkash')?'bKash':lower.includes('nagad')?'Nagad':lower.includes('rocket')?'Rocket':(lower.includes('cod')||lower.includes('cash')||lower.includes('ক্যাশ'))?'Cash on Delivery':'';if(pm){o.payment_method=pm;if(pm!=='Cash on Delivery')return res.json({reply:`${pm} number: ${s[pm.toLowerCase()+'_number']||''}। Payment করে Transaction ID দিন।`,quick});return res.json({reply:`Order summary: ${p.name} × ${o.quantity||1}, ${money(p.price*(o.quantity||1))}, COD। Confirm করতে “হ্যাঁ” লিখুন।`,quick});}return res.json({reply:'Payment method বলুন: '+activePayments(s).map(x=>x.method).join(', ')+(s.cod_enabled==='1'?', Cash on Delivery':'')+'।',quick});}
-     if(o.payment_method&&o.payment_method!=='Cash on Delivery'&&!o.transaction_id){o.transaction_id=msg;return res.json({reply:`Order summary: ${p.name} × ${o.quantity||1}, ${money(p.price*(o.quantity||1))}, ${o.payment_method}। Confirm করতে “হ্যাঁ” লিখুন।`,quick});}
-     if(yes){const total=p.price*Math.max(1,Number(o.quantity||1));const payNum=o.payment_method==='Cash on Delivery'?'':(s[o.payment_method.toLowerCase()+'_number']||'');const r=db.prepare('INSERT INTO orders(customer_name,phone,address,payment_method,payment_number,transaction_id,total,status,items_json) VALUES(?,?,?,?,?,?,?,?,?)').run(o.name,o.phone,o.address,o.payment_method,payNum,o.transaction_id||'',total,'Pending',JSON.stringify([{id:p.id,name:p.name,price:p.price,qty:o.quantity||1,image:p.image}]));resetChat(req);return res.json({reply:`অর্ডার সফলভাবে নেওয়া হয়েছে ❤️ Order ID: ${publicId(r.lastInsertRowid)}
-মোট: ${money(total)}
-Status: Pending`,order_id:publicId(r.lastInsertRowid),quick});}
-   }
- }
- if(lower.includes('delivery')||lower.includes('ডেলিভারি'))return res.json({reply:s.delivery_promise,quick});
- if(lower.includes('open')||lower.includes('সময়')||lower.includes('hours'))return res.json({reply:s.opening_hours,quick});
- if(lower.includes('agent')||lower.includes('যোগাযোগ')||lower.includes('contact'))return res.json({reply:s.ai_q4_text,quick});
- const hit=products.find(p=>(p.name+' '+p.category+' '+p.tags).toLowerCase().includes(lower.replace(/saree|শাড়ি|দাম|price|কত/g,'').trim()));
- if(hit){state.order={product_id:hit.id,quantity:1};return res.json({reply:`${hit.name} available আছে ❤️ Price ${money(hit.price)}। Order করতে চাইলে “order” লিখুন।`,product:hit,quick});}
- if(lower.includes('order')||lower.includes('অর্ডার')){state.order=state.order||{};return res.json({reply:'অবশ্যই ❤️ কোন Sareeটি order করতে চান? নাম লিখুন বা product-এর ছবি পাঠান।',quick});}
- return res.json({reply:`Welcome to SAREE ❤️ ${s.ai_q2_text}`,quick});
-});
-
-// Product-photo matching / AI vision
-app.post('/api/chat-image',upload.single('image'),async(req,res)=>{
- if(!req.file)return res.status(400).json({error:'Image required'});
- const products=db.prepare('SELECT * FROM products ORDER BY featured DESC,is_new DESC,id DESC').all();
- const data='data:'+req.file.mimetype+';base64,'+fs.readFileSync(req.file.path).toString('base64');
- const catalogImageInputs=[];
- for(const p of products.slice(0,20)){
-   try{
-     if(String(p.image||'').startsWith('/uploads/')){
-       const fp=path.join(UPLOADS,path.basename(p.image));
-       if(fs.existsSync(fp))catalogImageInputs.push('data:'+mimeFromPath(fp)+';base64,'+fs.readFileSync(fp).toString('base64'));
-     }
-   }catch{}
- }
- const system=`You are SAREE's product image matcher. Compare the customer's uploaded photo with the live SAREE catalog and the catalog images supplied after the text. Only return a product_id that is actually in the catalog. Do not invent availability. Return ONLY JSON: {"product_id":number|null,"confidence":"high|medium|low","reply":"short Bengali reply"}. Catalog:\n${catalogText(products)}`;
- try{const ai=await openAIJson(system,'Check this customer product photo against the SAREE catalog.',[data,...catalogImageInputs]);const p=products.find(x=>x.id===Number(ai?.product_id));if(p){req.session.chatState=req.session.chatState||{order:null};req.session.chatState.order={product_id:p.id,quantity:1};return res.json({reply:`ছবিটি দেখে মনে হচ্ছে আমাদের catalog-এর **${p.name}**-এর সাথে match করছে। Price ${money(p.price)}। Order করতে চাইলে “order” লিখুন।`,product:p,confidence:ai.confidence});}return res.json({reply:'এই ছবির সাথে আমাদের current catalog-এ নিশ্চিত match পাইনি। চাইলে অন্য product-এর ছবি দিন।'});}catch(e){
-  const filename=req.file.originalname.toLowerCase();const p=products.find(x=>(x.name+' '+x.category+' '+x.tags).toLowerCase().split(/\s+/).some(t=>t.length>3&&filename.includes(t)));if(p){req.session.chatState=req.session.chatState||{order:null};req.session.chatState.order={product_id:p.id,quantity:1};return res.json({reply:`ছবির filename/catalog তথ্য থেকে ${p.name} পাওয়া গেছে। Price ${money(p.price)}। Order করতে “order” লিখুন।`,product:p,confidence:'low'});}return res.json({reply:'ছবিটি পেয়েছি ❤️ কিন্তু নিশ্চিতভাবে catalog match করা যাচ্ছে না। Admin-এর catalog-এ productটি থাকলে product-এর নাম লিখে দিন।'});
- }
- finally{fs.unlink(req.file.path,()=>{});}
-});
-
-app.get('/admin',(req,res)=>res.sendFile(path.join(ROOT,'admin','index.html')));
-app.get('*',(req,res)=>{if(req.path.startsWith('/api/'))return res.status(404).json({error:'Not found'});res.sendFile(path.join(ROOT,'store','index.html'));});
-app.listen(PORT,()=>console.log(`SAREE Store running on http://localhost:${PORT}`));
+     if(o.name&&!o.phone){const phone=msg.
