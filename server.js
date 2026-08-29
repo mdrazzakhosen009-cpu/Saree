@@ -9,15 +9,19 @@ const crypto=require('crypto');
 const app=express();
 const PORT=process.env.PORT||3000;
 const ROOT=__dirname;
-// Local development uses the project folder. On Render, set DATA_DIR to the
-// persistent disk mount (the included render.yaml uses /var/data).
-const DATA_DIR=process.env.DATA_DIR || (process.env.RENDER ? '/var/data' : ROOT);
-fs.mkdirSync(DATA_DIR,{recursive:true});
-const UPLOADS=path.join(DATA_DIR,'uploads');
-fs.mkdirSync(UPLOADS,{recursive:true});
 
-app.use(express.json({limit:'8mb'}));
-app.use(express.urlencoded({extended:true,limit:'8mb'}));
+// Safe storage directory for Render free tier (uses /tmp to avoid EACCES permission errors)
+const DATA_DIR = process.env.RENDER ? path.join('/tmp', 'data') : ROOT;
+try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+} catch (e) {
+    console.warn('Using fallback data dir');
+}
+const UPLOADS=path.join(DATA_DIR,'uploads');
+try {
+    fs.mkdirSync(UPLOADS, { recursive: true });
+} catch (e) {}
+
 app.use(session({
   secret:process.env.SESSION_SECRET||'change-this-secret',resave:false,saveUninitialized:false,
   cookie:{httpOnly:true,sameSite:'lax',secure:process.env.NODE_ENV==='production',maxAge:7*24*3600*1000}
