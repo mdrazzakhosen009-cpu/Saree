@@ -10,10 +10,8 @@ const app=express();
 const PORT=process.env.PORT||3000;
 const ROOT=__dirname;
 
-// Trust proxy for secure cookies behind Render load balancer
 app.set('trust proxy', 1);
 
-// Safe storage directory for Render free tier (uses /tmp to avoid EACCES permission errors)
 const DATA_DIR = process.env.RENDER ? path.join('/tmp', 'data') : ROOT;
 try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -76,13 +74,11 @@ function money(v){return '৳'+Number(v||0).toLocaleString('en-BD');}
 function publicId(id){return 'SAR-'+String(id).padStart(6,'0');}
 function activePayments(s){return ['bkash','nagad','rocket'].filter(k=>s[k+'_enabled']==='1'&&s[k+'_number']).map(k=>({method:k[0].toUpperCase()+k.slice(1),number:s[k+'_number']}));}
 
-// Public catalog/settings
 app.get('/health',(req,res)=>res.json({ok:true,service:'SAREE'}));
 app.get('/api/settings',(req,res)=>res.json(getSettings()));
 app.get('/api/products',(req,res)=>{const{category,search}=req.query;let sql='SELECT * FROM products WHERE 1=1',a=[];if(category&&category!=='all'){sql+=' AND category=?';a.push(category);}if(search){sql+=' AND (name LIKE ? OR tags LIKE ? OR category LIKE ? OR description LIKE ?)';const q='%'+search+'%';a.push(q,q,q,q);}sql+=' ORDER BY featured DESC,is_new DESC,id DESC';res.json(db.prepare(sql).all(...a));});
 app.get('/api/products/:id',(req,res)=>{const p=db.prepare('SELECT * FROM products WHERE id=?').get(req.params.id);if(!p)return res.status(404).json({error:'Product not found'});res.json(p);});
 
-// Orders
 app.post('/api/orders',(req,res)=>{
   const{customer_name,phone,address,payment_method,payment_number,transaction_id,items}=req.body||{};
   if(!customer_name||!phone||!address||!payment_method||!Array.isArray(items)||!items.length)return res.status(400).json({error:'সব required তথ্য দিন।'});
@@ -103,13 +99,11 @@ app.post('/api/orders',(req,res)=>{
 });
 app.get('/api/orders/track/:id',(req,res)=>{const raw=String(req.params.id).replace(/^SAR-/i,'');const o=db.prepare('SELECT id,status,total,created_at FROM orders WHERE id=?').get(Number(raw));if(!o)return res.status(404).json({error:'Order not found'});res.json({...o,public_id:publicId(o.id)});});
 
-// Admin auth
 app.post('/api/admin/login',(req,res)=>{const s=getSettings(),hash=crypto.createHash('sha256').update(String(req.body.password||'')).digest('hex');if(hash!==s.admin_password_hash)return res.status(401).json({error:'Wrong password'});req.session.admin=true;res.json({ok:true});});
 app.post('/api/admin/logout',(req,res)=>req.session.destroy(()=>res.json({ok:true})));
 app.get('/api/admin/me',auth,(req,res)=>res.json({ok:true}));
 app.get('/api/admin/dashboard',auth,(req,res)=>{const revenue=db.prepare("SELECT COALESCE(SUM(total),0) revenue FROM orders WHERE status!='Cancelled'").get().revenue;res.json({revenue,orders:db.prepare('SELECT COUNT(*) c FROM orders').get().c,products:db.prepare('SELECT COUNT(*) c FROM products').get().c,agents:db.prepare('SELECT COUNT(*) c FROM agents WHERE active=1').get().c});});
 
-// Admin products/orders/agents/settings
 app.get('/api/admin/products',auth,(req,res)=>res.json(db.prepare('SELECT * FROM products ORDER BY id DESC').all()));
 app.post('/api/admin/products',auth,upload.single('image'),(req,res)=>{const b=req.body,image=req.file?'/uploads/'+req.file.filename:(b.image_url||'/assets/product-placeholder.svg');const r=db.prepare('INSERT INTO products(name,price,old_price,category,description,tags,image,featured,is_new) VALUES(?,?,?,?,?,?,?,?,?)').run(b.name,Number(b.price),Number(b.old_price||0),b.category||'Saree',b.description||'',b.tags||'',image,bool(b.featured)?1:0,bool(b.is_new)?1:0);res.json({ok:true,id:r.lastInsertRowid});});
 app.put('/api/admin/products/:id',auth,upload.single('image'),(req,res)=>{const old=db.prepare('SELECT * FROM products WHERE id=?').get(req.params.id);if(!old)return res.status(404).json({error:'Product not found'});const b=req.body,image=req.file?'/uploads/'+req.file.filename:(b.image_url||old.image);db.prepare('UPDATE products SET name=?,price=?,old_price=?,category=?,description=?,tags=?,image=?,featured=?,is_new=? WHERE id=?').run(b.name,Number(b.price),Number(b.old_price||0),b.category||'Saree',b.description||'',b.tags||'',image,bool(b.featured)?1:0,bool(b.is_new)?1:0,req.params.id);res.json({ok:true});});
@@ -124,7 +118,6 @@ app.get('/api/admin/settings',auth,(req,res)=>res.json(getSettings()));
 app.put('/api/admin/settings',auth,(req,res)=>{const b=req.body||{};for(const[k,v]of Object.entries(b)){if(k==='admin_password_hash')continue;db.prepare('INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(k,String(bool(v)?'1':v));}res.json({ok:true,settings:getSettings()});});
 app.put('/api/admin/password',auth,(req,res)=>{if(!req.body.password)return res.status(400).json({error:'Password required'});const hash=crypto.createHash('sha256').update(String(req.body.password)).digest('hex');db.prepare("UPDATE settings SET value=? WHERE key='admin_password_hash'").run(hash);res.json({ok:true});});
 
-// Admin AI product import
 app.post('/api/admin/ai-product',auth,upload.single('image'),async(req,res)=>{
   const image=req.file?'/uploads/'+req.file.filename:(req.body.image_url||'/assets/product-placeholder.svg');
   let preview={name:'Premium Saree',price:Number(req.body.price||1990),category:req.body.category||'Saree',description:req.body.description||'Premium saree with elegant finishing, suitable for festive and special occasions.',tags:req.body.tags||'saree,premium,festive',image};
@@ -200,4 +193,5 @@ app.post('/api/chat',async(req,res)=>{
    if(p){
      if(!o.name && /^(order|অর্ডার|buy|কিনবো|নেব)/i.test(msg))return res.json({reply:`${p.name} order করতে আপনার নাম দিন।`,quick});
      if(!o.name && !/^(order|অর্ডার|buy|কিনবো|নেব)/i.test(msg)){o.name=msg;return res.json({reply:'ধন্যবাদ ❤️ এখন আপনার mobile number দিন।',quick});}
-     if(o.name&&!o.phone){const phone=msg.
+     if(o.name&&!o.phone){const phone=msg.replace(/\s+/g,'');if(/01[3-9]\d{8}/.test(phone)||/\d{10,14}/.test(phone)){o.phone=msg;return res.json({reply:'এখন আপনার পূর্ণ delivery address দিন।',quick});}return res.json({reply:'একটি valid mobile number দিন, যেমন 01XXXXXXXXX।',quick});}
+     if(o.name&&o.phone&&!o.addr
