@@ -3,7 +3,7 @@ const path=require('path');
 const fs=require('fs');
 const multer=require('multer');
 const session=require('express-session');
-const Database=require('better-sqlite3');
+const { createClient } = require('@libsql/client');
 const crypto=require('crypto');
 
 const app=express();
@@ -11,7 +11,7 @@ const PORT=process.env.PORT||3000;
 const ROOT=__dirname;
 // Local development uses the project folder. On Render, set DATA_DIR to the
 // persistent disk mount (the included render.yaml uses /var/data).
-const DATA_DIR=process.env.DATA_DIR || (process.env.RENDER ? '/var/data' : ROOT);
+const DATA_DIR = process.env.DATA_DIR || ROOT;
 fs.mkdirSync(DATA_DIR,{recursive:true});
 const UPLOADS=path.join(DATA_DIR,'uploads');
 fs.mkdirSync(UPLOADS,{recursive:true});
@@ -26,33 +26,24 @@ app.use('/uploads',express.static(UPLOADS));
 app.use(express.static(path.join(ROOT,'store')));
 app.use('/admin',express.static(path.join(ROOT,'admin')));
 
-const db=new Database(path.join(DATA_DIR,'saree.db'));
-// Fail early instead of silently running with an unexpected storage location.
-if(process.env.RENDER && !process.env.DATA_DIR) console.warn('SAREE: DATA_DIR not set; render.yaml should mount /var/data.');
-db.pragma('journal_mode = WAL');
-db.exec(`
-CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT);
-CREATE TABLE IF NOT EXISTS products(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,price REAL NOT NULL,old_price REAL DEFAULT 0,category TEXT,description TEXT,tags TEXT,image TEXT,featured INTEGER DEFAULT 0,is_new INTEGER DEFAULT 0,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS orders(id INTEGER PRIMARY KEY AUTOINCREMENT,customer_name TEXT,phone TEXT,address TEXT,payment_method TEXT,payment_number TEXT,transaction_id TEXT,total REAL,status TEXT DEFAULT 'Pending',items_json TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS agents(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT,whatsapp TEXT,messenger_url TEXT,active INTEGER DEFAULT 1);
-`);
+const db = createClient({
+  url: process.env.TURSO_DATABASE_URL,
+  authToken: process.env.TURSO_AUTH_TOKEN,
+});
 
-const quickDefaults={
- ai_q1_title:'Delivery Time',ai_q1_text:'ঢাকার ভিতরে 1–2 দিন, ঢাকার বাইরে 2–4 দিন।',
- ai_q2_title:'Store Info',ai_q2_text:'SAREE-তে premium saree collection পাওয়া যায়—Katan, Jamdani, Organza, Cotton ও festive saree।',
- ai_q3_title:'Opening Hours',ai_q3_text:'প্রতিদিন সকাল 10টা থেকে রাত 10টা।',
- ai_q4_title:'Contact Agent',ai_q4_text:'সরাসরি WhatsApp/Messenger agent-এর সাথে কথা বলুন।',
- ai_q5_title:'Customer Reviews / Sales Proof',ai_q5_text:'আমাদের customer feedback ও sales proof এখানে দেখুন।',
- ai_proof_image:'/assets/product-placeholder.svg'
-};
-const defaults={store_name:'SAREE',logo:'/assets/logo-saree.png',delivery_promise:'ঢাকার ভিতরে 1–2 দিন, ঢাকার বাইরে 2–4 দিন',opening_hours:'প্রতিদিন সকাল 10টা থেকে রাত 10টা',store_info:'SAREE-তে premium saree collection পাওয়া যায়—Katan, Jamdani, Organza, Cotton ও festive saree।',bkash_number:'01812-345678',nagad_number:'',rocket_number:'',payment_note:'Send Money করে Transaction ID দিন।',bkash_enabled:'1',nagad_enabled:'1',rocket_enabled:'1',cod_enabled:'1',admin_password_hash:crypto.createHash('sha256').update('admin123').digest('hex'),...quickDefaults};
-for(const[k,v]of Object.entries(defaults))db.prepare('INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)').run(k,v);
+async function initDb() {
+  try {
+    await db.execute(`CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT)`);
+    await db.execute(`CREATE TABLE IF NOT EXISTS products(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, price REAL, old_price REAL, category TEXT, description TEXT, tags TEXT, image TEXT)`);
+    await db.execute(`CREATE TABLE IF NOT EXISTS orders(id INTEGER PRIMARY KEY AUTOINCREMENT, customer_name TEXT, phone TEXT, address TEXT, items TEXT, total REAL, status TEXT, date TEXT)`);
+    await db.execute(`CREATE TABLE IF NOT EXISTS agents(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, whatsapp TEXT)`);
+    console.log("Database tables initialized successfully.");
+  } catch (err) {
+    console.error("Database initialization error:", err);
+  }
+}
+initDb();
 
-if(!db.prepare('SELECT COUNT(*) c FROM products').get().c){
- const ins=db.prepare('INSERT INTO products(name,price,old_price,category,description,tags,image,featured,is_new) VALUES(?,?,?,?,?,?,?,?,?)');
- ins.run('Katan Silk Saree',2490,2990,'Katan','Elegant Katan silk saree with premium finish.','katan,silk,festive','/assets/product-placeholder.svg',1,1);
- ins.run('Jamdani Saree',1890,2290,'Jamdani','Classic Jamdani-inspired weave for timeless occasions.','jamdani,classic','/assets/product-placeholder.svg',1,0);
- ins.run('Organza Saree',2190,2590,'Organza','Lightweight organza saree with refined border.','organza,party','/assets/product-placeholder.svg',0,1);
  ins.run('Cotton Saree',1490,1790,'Cotton','Comfortable breathable saree for everyday elegance.','cotton,tangail','/assets/product-placeholder.svg',0,0);
 }
 
