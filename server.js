@@ -44,8 +44,6 @@ async function initDb() {
 }
 initDb();
 
- ins.run('Cotton Saree',1490,1790,'Cotton','Comfortable breathable saree for everyday elegance.','cotton,tangail','/assets/product-placeholder.svg',0,0);
-}
 
 const upload=multer({
   storage:multer.diskStorage({destination:(r,f,cb)=>cb(null,UPLOADS),filename:(r,f,cb)=>cb(null,Date.now()+'-'+f.originalname.replace(/[^a-zA-Z0-9._-]/g,'_'))}),
