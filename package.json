@@ -8,13 +8,6 @@
   "engines": {
     "node": ">=18"
   },
-  
-{
-  "name":"saree-premium-store",
-  "version":"2.0.0",
-  "private":true,
-  "scripts":{"start":"node server.js"},
-  "engines":{"node":">=18"},
   "dependencies": {
     "@libsql/client": "^0.14.0",
     "better-sqlite3": "^11.3.0",
