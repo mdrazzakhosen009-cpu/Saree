@@ -93,7 +93,8 @@ const sql={
 // =========================
 
 async function initDatabase(){
-
+  await db.execute('DROP TABLE IF EXISTS products;');
+  
   await db.batch([
     {
       sql:`CREATE TABLE IF NOT EXISTS settings(
