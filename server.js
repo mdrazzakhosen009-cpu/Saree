@@ -33,15 +33,21 @@ const db = createClient({
 
 async function initDb() {
   try {
-    await db.execute(`CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT)`);
-    await db.execute(`CREATE TABLE IF NOT EXISTS products(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, price REAL, old_price REAL, category TEXT, description TEXT, tags TEXT, image TEXT)`);
-    await db.execute(`CREATE TABLE IF NOT EXISTS orders(id INTEGER PRIMARY KEY AUTOINCREMENT, customer_name TEXT, phone TEXT, address TEXT, items TEXT, total REAL, status TEXT, date TEXT)`);
-    await db.execute(`CREATE TABLE IF NOT EXISTS agents(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, whatsapp TEXT)`);
+    await db.execute(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`);
+    await db.execute(`CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, price REAL, old_price REAL, category TEXT, description TEXT, tags TEXT, image TEXT)`);
+    await db.execute(`CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_name TEXT, phone TEXT, address TEXT, items TEXT, total REAL, status TEXT, date TEXT)`);
+    await db.execute(`CREATE TABLE IF NOT EXISTS agents (id INTEGER PRIMARY KEY AUTOINCREMENT)`);
+    
+    const res = await db.execute(`SELECT value FROM settings WHERE key = 'admin_password'`);
+    if (res.rows.length === 0) {
+      await db.execute(`INSERT INTO settings (key, value) VALUES ('admin_password', 'admin123')`);
+    }
     console.log("Database tables initialized successfully.");
   } catch (err) {
     console.error("Database initialization error:", err);
   }
 }
+
 initDb();
 
 
