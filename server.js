@@ -58,11 +58,16 @@ const upload=multer({
 async function getSettings(){
   try {
     const rs = await db.execute('SELECT key, value FROM settings');
-    return Object.fromEntries(rs.rows.map(r => [r.key, r.value]));
+    const settings = Object.fromEntries(rs.rows.map(r => [r.key, r.value]));
+    if (process.env.admin_password) {
+      settings.admin_password = process.env.admin_password;
+    }
+    return settings;
   } catch(e) {
-    return { admin_password: 'admin123' };
+    return { admin_password: process.env.admin_password || 'admin007' };
   }
 }
+
 function auth(req,res,next){if(!req.session.admin)return res.status(401).json({error:'Unauthorized'}); next();}
 function bool(v){return v===true||v==='true'||v==='1'||v===1;}
 function money(v){return '৳'+Number(v||0).toLocaleString('en-BD');}
