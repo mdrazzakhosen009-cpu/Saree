@@ -203,85 +203,34 @@ async function initDatabase(){
       [k,String(v)]
     );
   }
+  const productCountRs = await db.execute('SELECT COUNT(*) AS c FROM products');
+  const productCount = productCountRs.rows[0]?.c || 0;
 
+  if (Number(productCount) === 0) {
+    await db.execute({
+      sql: `INSERT INTO products (name, price, old_price, category, description, tags, image, featured, is_new) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: ['Katan Silk Saree', 2490, 2990, 'Katan', 'Elegant Katan silk saree with premium finish.', 'katan,silk,festive', '/assets/product-placeholder.svg', 1, 1]
+    });
 
-  const productCount=await sql.get(
-    'SELECT COUNT(*) AS c FROM products'
-  );
+    await db.execute({
+      sql: `INSERT INTO products (name, price, old_price, category, description, tags, image, featured, is_new) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: ['Jamdani Saree', 1890, 2290, 'Jamdani', 'Classic Jamdani-inspired weave for timeless occasions.', 'jamdani,classic', '/assets/product-placeholder.svg', 1, 0]
+    });
 
-  if(Number(productCount?.c||0)===0){
+    await db.execute({
+      sql: `INSERT INTO products (name, price, old_price, category, description, tags, image, featured, is_new) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: ['Organza Saree', 2190, 2590, 'Organza', 'Lightweight organza saree with refined border.', 'organza,party', '/assets/product-placeholder.svg', 0, 1]
+    });
 
-    await sql.run(
-      `INSERT INTO products
-      (name,price,old_price,category,description,tags,image,featured,is_new)
-      VALUES(?,?,?,?,?,?,?,?,?)`,
-      [
-        'Katan Silk Saree',
-        2490,
-        2990,
-        'Katan',
-        'Elegant Katan silk saree with premium finish.',
-        'katan,silk,festive',
-        '/assets/product-placeholder.svg',
-        1,
-        1
-      ]
-    );
-
-    await sql.run(
-      `INSERT INTO products
-      (name,price,old_price,category,description,tags,image,featured,is_new)
-      VALUES(?,?,?,?,?,?,?,?,?)`,
-      [
-        'Jamdani Saree',
-        1890,
-        2290,
-        'Jamdani',
-        'Classic Jamdani-inspired weave for timeless occasions.',
-        'jamdani,classic',
-        '/assets/product-placeholder.svg',
-        1,
-        0
-      ]
-    );
-
-    await sql.run(
-      `INSERT INTO products
-      (name,price,old_price,category,description,tags,image,featured,is_new)
-      VALUES(?,?,?,?,?,?,?,?,?)`,
-      [
-        'Organza Saree',
-        2190,
-        2590,
-        'Organza',
-        'Lightweight organza saree with refined border.',
-        'organza,party',
-        '/assets/product-placeholder.svg',
-        0,
-        1
-      ]
-    );
-
-    await sql.run(
-      `INSERT INTO products
-      (name,price,old_price,category,description,tags,image,featured,is_new)
-      VALUES(?,?,?,?,?,?,?,?,?)`,
-      [
-        'Cotton Saree',
-        1490,
-        1790,
-        'Cotton',
-        'Comfortable breathable saree for everyday elegance.',
-        'cotton,tangail',
-        '/assets/product-placeholder.svg',
-        0,
-        0
-      ]
-    );
+    await db.execute({
+      sql: `INSERT INTO products (name, price, old_price, category, description, tags, image, featured, is_new) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: ['Cotton Saree', 1490, 1790, 'Cotton', 'Comfortable breathable saree for everyday elegance.', 'cotton,tangail', '/assets/product-placeholder.svg', 0, 0]
+    });
   }
 
   console.log('SAREE: Turso database connected successfully.');
 }
+
 
         // =========================
 // FILE UPLOAD
