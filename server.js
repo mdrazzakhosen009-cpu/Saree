@@ -27,17 +27,21 @@ try {
 app.use(express.json({limit:'8mb'}));
 app.use(express.urlencoded({extended:true,limit:'8mb'}));
 
+app.set('trust proxy', 1);
+
 app.use(session({
-  secret:process.env.SESSION_SECRET||'change-this-secret',
-  resave:false,
-  saveUninitialized:false,
-  cookie:{
-    httpOnly:true,
-    sameSite:'lax',
-    secure:process.env.NODE_ENV==='production',
-    maxAge:7*24*3600*1000
+  secret: process.env.SESSION_SECRET || 'change-this-secret',
+  resave: false,
+  saveUninitialized: false,
+  proxy: true,
+  cookie: {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 7 * 24 * 3600 * 1000
   }
 }));
+
 
 app.use('/uploads',express.static(UPLOADS));
 app.use(express.static(path.join(ROOT,'store')));
