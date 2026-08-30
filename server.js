@@ -40,7 +40,7 @@ async function initDb() {
     
     const res = await db.execute(`SELECT value FROM settings WHERE key = 'admin_password'`);
     if (res.rows.length === 0) {
-      await db.execute(`INSERT INTO settings (key, value) VALUES ('admin_password', 'admin123')`);
+      await db.execute(`INSERT INTO settings (key, value) VALUES ('admin_password', 'admin007')`);
     }
     console.log("Database tables initialized successfully.");
   } catch (err) {
