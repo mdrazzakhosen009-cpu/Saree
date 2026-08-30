@@ -37,12 +37,11 @@ async function initDb() {
     await db.execute(`CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, price REAL, old_price REAL, category TEXT, description TEXT, tags TEXT, image TEXT)`);
     await db.execute(`CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_name TEXT, phone TEXT, address TEXT, items TEXT, total REAL, status TEXT, date TEXT)`);
     await db.execute(`CREATE TABLE IF NOT EXISTS agents (id INTEGER PRIMARY KEY AUTOINCREMENT)`);
+    await db.execute({
+  sql: `INSERT INTO settings (key, value) VALUES ('admin_password', 'admin007') ON CONFLICT(key) DO UPDATE SET value = 'admin007'`,
+  args: []
+});
     
-    const res = await db.execute(`SELECT value FROM settings WHERE key = 'admin_password'`);
-    if (res.rows.length === 0) {
-      await db.execute(`INSERT INTO settings (key, value) VALUES ('admin_password', 'admin007')`);
-    }
-    console.log("Database tables initialized successfully.");
   } catch (err) {
     console.error("Database initialization error:", err);
   }
