@@ -12,11 +12,17 @@ const ROOT=__dirname;
 
 // Upload files are still stored in DATA_DIR.
 // Turso stores the database data.
-const DATA_DIR=process.env.DATA_DIR || (process.env.RENDER ? '/var/data' : ROOT);
-fs.mkdirSync(DATA_DIR,{recursive:true});
+const DATA_DIR = process.env.DATA_DIR || ROOT;
+try {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+} catch (e) {
+  console.warn('Fallback to root dir for uploads');
+}
 
-const UPLOADS=path.join(DATA_DIR,'uploads');
-fs.mkdirSync(UPLOADS,{recursive:true});
+const UPLOADS = path.join(ROOT, 'uploads');
+try {
+  fs.mkdirSync(UPLOADS, { recursive: true });
+} catch (e) {}
 
 app.use(express.json({limit:'8mb'}));
 app.use(express.urlencoded({extended:true,limit:'8mb'}));
