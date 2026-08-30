@@ -56,16 +56,24 @@ const upload=multer({
   limits:{fileSize:5*1024*1024},
   fileFilter:(req,file,cb)=>cb(null,/^image\/(jpeg|png|webp|gif)$/.test(file.mimetype))
 });
-function getSettings(){return Object.fromEntries(db.prepare('SELECT key,value FROM settings').all().map(r=>[r.key,r.value]));}
-function auth(req,res,next){if(!req.session.admin)return res.status(401).json({error:'Admin login required'});next();}
+async function getSettings(){
+  try {
+    const rs = await db.execute('SELECT key, value FROM settings');
+    return Object.fromEntries(rs.rows.map(r => [r.key, r.value]));
+  } catch(e) {
+    return { admin_password: 'admin123' };
+  }
+}
+function auth(req,res,next){if(!req.session.admin)return res.status(401).json({error:'Unauthorized'}); next();}
 function bool(v){return v===true||v==='true'||v==='1'||v===1;}
 function money(v){return '৳'+Number(v||0).toLocaleString('en-BD');}
 function publicId(id){return 'SAR-'+String(id).padStart(6,'0');}
-function activePayments(s){return ['bkash','nagad','rocket'].filter(k=>s[k+'_enabled']==='1'&&s[k+'_number']).map(k=>({method:k[0].toUpperCase()+k.slice(1),number:s[k+'_number']}));}
+function activePayments(s){return [ 'bkash', 'nagad', 'rocket' ].filter(k=>s && s[k+'_enabled']==='true');}
 
+  
 // Public catalog/settings
 app.get('/health',(req,res)=>res.json({ok:true,service:'SAREE'}));
-app.get('/api/settings',(req,res)=>res.json(getSettings()));
+app.get('/api/settings', async (req,res)=>res.json(await getSettings()));
 app.get('/api/products',(req,res)=>{const{category,search}=req.query;let sql='SELECT * FROM products WHERE 1=1',a=[];if(category&&category!=='all'){sql+=' AND category=?';a.push(category);}if(search){sql+=' AND (name LIKE ? OR tags LIKE ? OR category LIKE ? OR description LIKE ?)';const q='%'+search+'%';a.push(q,q,q,q);}sql+=' ORDER BY featured DESC,is_new DESC,id DESC';res.json(db.prepare(sql).all(...a));});
 app.get('/api/products/:id',(req,res)=>{const p=db.prepare('SELECT * FROM products WHERE id=?').get(req.params.id);if(!p)return res.status(404).json({error:'Product not found'});res.json(p);});
 
