@@ -214,6 +214,16 @@ async function start(){
   }catch(e){console.error("AI PRODUCT:",e.message);res.json({preview:fallback});}
  });
 
+ app.post("/api/admin/ai-product",auth,upload.single("image"),async(req,res)=>{
+  const b=req.body||{},image=req.file?"/uploads/"+req.file.filename:b.image_url||"/assets/product-placeholder.svg";
+  const fallback={name:b.name||"Premium Saree",price:Number(b.price||0),category:b.category||"Saree",description:b.description||"Premium saree with elegant finish.",tags:b.tags||"saree,premium,fashion",image};
+  if(!process.env.OPENAI_API_KEY)return res.json({preview:fallback});
+  try{
+   const ai=await openAIJson("You are an expert saree e-commerce copywriter for SAREE. Never call it a demo website. Return JSON with name,price,category,description,tags. Do not invent facts.",JSON.stringify(b));
+   res.json({preview:{...fallback,...ai,image}});
+  }catch(e){console.error("AI PRODUCT:",e.message);res.json({preview:fallback});}
+ });
+
  app.post("/api/chat",async(req,res)=>{
   try{
    const msg=String(req.body?.message||"").trim();if(!msg)return res.status(400).json({error:"Message required."});
@@ -251,4 +261,36 @@ Return ONLY JSON keys reply,intent,product_id,quantity,name,phone,address,paymen
       else if(chat.payment_method!=="Cash on Delivery"&&!chat.transaction_id)ai.reply=`${chat.payment_method} payment number: ${s[chat.payment_method.toLowerCase()+"_number"]||""}। Payment করে Transaction ID দিন।`;
       else if(ai.confirm===true){
        const qty=Math.max(1,Number(chat.quantity||1)),total=p.price*qty,payNum=chat.payment_method==="Cash on Delivery"?"":s[chat.payment_method.toLowerCase()+"_number"]||"";
-       const r=await run("INSERT INTO orders(customer_name,phone,address,payment_method,paym
+       const r=await run("INSERT INTO orders(customer_name,phone,address,payment_method,payment_number,transaction_id,total,status,items_json) VALUES(?,?,?,?,?,?,?,?,?)",[chat.name,chat.phone,chat.address,chat.payment_method,payNum,chat.transaction_id||"",total,"Pending",JSON.stringify([{id:p.id,name:p.name,price:p.price,qty,image:p.image}])]);
+       const oid=orderId(r.lastInsertRowid);resetChat(req);
+       return res.json({reply:`অর্ডার সফলভাবে নেওয়া হয়েছে ❤️\nOrder ID: ${oid}\n${p.name} × ${qty}\nমোট: ${money(total)}\nStatus: Pending`,order_id:oid,quick});
+      }
+      req.session.saree_chat=chat;req.session.save(()=>{});
+     }
+     return res.json({reply:ai.reply||"অবশ্যই ❤️ কীভাবে সাহায্য করতে পারি?",quick});
+    }
+   }catch(e){console.error("AI error:",e.message);}
+   const lower=msg.toLowerCase();
+   const found=products.find(p=>lower.includes(String(p.name).toLowerCase())||lower.includes(String(p.category||"").toLowerCase()));
+   if(found){
+    chat.product_id=found.id;chat.quantity=chat.quantity||1;req.session.saree_chat=chat;
+    if(/order|অর্ডার|buy|কিনবো|কিন/i.test(msg))return res.json({reply:`${found.name} — ${money(found.price)}। Order করতে আপনার নাম দিন।`,quick});
+    return res.json({reply:`${found.name}\nPrice: ${money(found.price)}\nCategory: ${found.category||"Saree"}\n${found.description||""}`,quick});
+   }
+   return res.json({reply:"অবশ্যই ❤️ আমি SAREE-এর product, price, availability, delivery ও order সম্পর্কে সাহায্য করতে পারি। কোন saree দেখতে চান?",quick});
+  }catch(e){console.error("CHAT ERROR:",e);res.status(500).json({error:"Chat service error"});}
+ });
+
+ app.get("/api/orders/:id",async(req,res)=>{
+  const raw=String(req.params.id).replace(/^SAR-/i,""),id=Number(raw);
+  if(!Number.isInteger(id)||id<=0)return res.status(400).json({error:"Invalid Order ID"});
+  const o=await get("SELECT id,status,total,created_at,items_json FROM orders WHERE id=?",[id]);
+  if(!o)return res.status(404).json({error:"Order not found"});
+  res.json({order_id:orderId(o.id),status:o.status,total:o.total,created_at:o.created_at,items:JSON.parse(o.items_json||"[]")});
+ });
+
+ app.use((err,req,res,next)=>{console.error("SERVER ERROR:",err);if(err instanceof multer.MulterError)return res.status(400).json({error:err.message});res.status(500).json({error:"Internal server error"});});
+ app.listen(PORT,"0.0.0.0",()=>console.log(`SAREE server running on port ${PORT} | Turso database connected`));
+}
+
+start().catch(e=>{console.error("STARTUP ERROR:",e);process.exit(1);});
