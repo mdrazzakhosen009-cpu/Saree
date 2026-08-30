@@ -141,10 +141,14 @@ async function seedDefaults() {
       await sql.run('INSERT INTO settings (key, value) VALUES (?, ?)', [k, v]);
     }
   }
+  
+  // Force reset password to admin123
+  const hash = crypto.createHash('sha256').update('admin123').digest('hex');
   const adminPass = await sql.get('SELECT * FROM settings WHERE key = ?', ['admin_password']);
   if (!adminPass) {
-    const hash = crypto.createHash('sha256').update('admin123').digest('hex');
     await sql.run('INSERT INTO settings (key, value) VALUES (?, ?)', ['admin_password', hash]);
+  } else {
+    await sql.run('UPDATE settings SET value = ? WHERE key = ?', [hash, 'admin_password']);
   }
 }
 
@@ -222,4 +226,3 @@ db.execute(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEX
   .catch(err => {
     console.error('Database initialization error:', err);
   });
-  
